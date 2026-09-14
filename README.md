@@ -1,336 +1,272 @@
-# Buổi 04 — Model Registry và Governance
+# Buổi 04 — Model Registry và Model Governance
 
-> **Dataset:** [House Sales in King County, USA](https://www.kaggle.com/datasets/harlfoxem/housesalesprediction) (`data/raw/kc_house_data.csv`), raw `data/raw/kc_house_data.csv` (~21510 rows; `sqft_living→area`, `yr_built→age`, `zipcode→location`, `floors`).
-> Chuẩn bị lại: `# column mapping in src/ingestion/ingest.py`
-
+> **Dataset:** [House Sales in King County, USA](https://www.kaggle.com/datasets/harlfoxem/housesalesprediction)  
+> Tiếp nối Buổi 03: dùng run đã log trên MLflow Tracking để đăng ký, validate, promote và rollback trên **Model Registry**.
 
 ## Mục tiêu buổi học
 
-- Đăng ký model vào MLflow Model Registry
-- Hiểu vòng đời model: Candidate → Staging → Production
-- Viết automated validation pipeline (kiểm tra metrics so với ngưỡng)
-- Thực hiện promote và rollback phiên bản model
-- Viết Model Card cho model
+- Hiểu vì sao cần Model Registry sau experiment tracking
+- Mô tả lifecycle: Candidate → Validation → Staging → Production → Rollback/Retire
+- Phân biệt Registry (kỹ thuật/version) và Governance (ai duyệt, audit, traceability)
+- Đăng ký ≥2 version vào MLflow Registry từ run Buổi 3
+- Chạy automated validation theo `configs/thresholds.yaml` (pass → Staging, fail → Rejected)
+- Human approve Staging → Production, rồi demo rollback
+- Điền Model Card + bảng traceability + audit log
+
+```text
+Buổi 3: Train + Experiment Tracking
+              ↓
+Buổi 4: Select best → Register → Validate → Approve → Production → Rollback
+```
 
 ---
 
 ## Kiến thức lý thuyết
 
-### Model Registry là gì?
+### 1. Vì sao cần Registry và Governance?
 
-Model Registry là trung tâm quản lý tất cả phiên bản model. Nó giúp:
+Sau nhiều lần train, doanh nghiệp cần trả lời:
 
-- Lưu trữ và đánh số phiên bản cho mỗi model
-- Theo dõi model nào đang chạy trên production
-- Quản lý quy trình duyệt trước khi triển khai
-- Hỗ trợ rollback nhanh khi model mới gặp vấn đề
+- Model nào được phép dùng? Version nào đang Production?
+- Ai phê duyệt? Train bằng dataset / git commit nào?
+- Model mới có vượt validation không? Rollback về đâu khi lỗi?
 
-### Vòng đời Model (Model Lifecycle)
+Registry + Governance biến các file `model.pkl` rời rạc thành quy trình có version, trạng thái, người chịu trách nhiệm và lịch sử.
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                     MODEL LIFECYCLE                                  │
-│                                                                      │
-│  Train                                                               │
-│    │                                                                 │
-│    ▼                                                                 │
-│  Register (đăng ký vào Model Registry)                               │
-│    │                                                                 │
-│    ▼                                                                 │
-│  Automated Validation                                                │
-│    │                                                                 │
-│    ├── FAIL ──► Từ chối, không triển khai                            │
-│    │                                                                 │
-│    └── PASS                                                          │
-│         │                                                            │
-│         ▼                                                            │
-│       Staging (kiểm thử trên môi trường giả lập)                    │
-│         │                                                            │
-│         ▼                                                            │
-│       Human Approve (người duyệt xác nhận)                          │
-│         │                                                            │
-│         ▼                                                            │
-│       Production (phục vụ dự đoán thực tế)                           │
-│         │                                                            │
-│         ▼                                                            │
-│       Monitoring (giám sát liên tục)                                 │
-│         │                                                            │
-│         ├── Bình thường ──► Tiếp tục phục vụ                         │
-│         │                                                            │
-│         └── Phát hiện vấn đề ──► Rollback (quay về phiên bản cũ)    │
-│                                                                      │
-└─────────────────────────────────────────────────────────────────────┘
+### 2. Model Registry
+
+Kho quản lý model đủ điều kiện xem xét triển khai. Mỗi version thường gắn:
+
+| Trường | Ví dụ |
+| --- | --- |
+| name / version | `house-price-model` / `1` |
+| source run | `runs:/abc123/model` |
+| metrics | `test_r2`, `test_rmse` |
+| tags | `git_commit`, `dataset_version`, `validation_status` |
+| stage / alias | `Staging`, `Production` / `staging`, `champion` |
+
+### 3. Lifecycle
+
+```text
+Development → Experiment → Candidate → Validation
+                                      ├── Rejected
+                                      └── Staging → Human Approve → Production
+                                                                  ├── Continue
+                                                                  └── Rollback / Retire
 ```
 
-### Model Governance
+| Trạng thái | Ý nghĩa trong lab |
+| --- | --- |
+| Candidate | Vừa register, chưa validate |
+| Staging | Automated validation PASSED |
+| Production | Human approve (alias `champion`) |
+| Rejected | Metric dưới ngưỡng |
+| Archived | Bị thay khi promote version mới |
 
-Model Governance đảm bảo mỗi model đưa lên production đều có thể truy vết và kiểm soát:
+### 4. Validation vs Approval
 
-| Khía cạnh         | Mô tả                                                                | Ví dụ                                      |
-| ------------------ | --------------------------------------------------------------------- | ------------------------------------------- |
-| Traceability       | Truy vết nguồn gốc model: run nào, dữ liệu nào, code version nào    | `run_id`, `dataset_version`, `git_commit`   |
-| Audit Trail        | Nhật ký mọi thay đổi trạng thái của model                            | Ai duyệt, khi nào promote, lý do rollback  |
-| Approval Workflow  | Quy trình phê duyệt trước khi model lên production                   | Validation tự động + duyệt thủ công         |
+- **Automated validation:** so metrics run nguồn với `thresholds.yaml` (R²/RMSE/MAE). Pass → Staging.
+- **Human approval:** checklist + promote Production (lab mô phỏng bằng script + tag `approved_by`).
 
-### Model Card
+Không đưa thẳng Production chỉ vì test metric đẹp.
 
-Model Card là tài liệu mô tả model, bao gồm:
+### 5. Governance, Audit, Traceability
 
-- Mục đích sử dụng và giới hạn của model
-- Dữ liệu huấn luyện (nguồn, kích thước, thời gian)
-- Hiệu năng trên các tập dữ liệu khác nhau
-- Các rủi ro đã biết và hướng giảm thiểu
-- Hướng dẫn sử dụng và liên hệ người phụ trách
+```text
+Prediction → Model version → Run → Git commit → Dataset version → Metrics → Approval history
+```
+
+Mỗi thay đổi stage nên ghi audit: ai, khi nào, version trước/sau, lý do.
+
+### 6. Rollback
+
+Giữ artifact version cũ. Khi Production mới lỗi: chuyển alias/stage về version ổn định trước — **không** đồng nghĩa retrain ngay.
+
+### 7. MLflow: Tracking vs Registry
+
+```text
+Training Runs (Buổi 3)
+    ↓ Select best
+Register Model
+    ↓ Candidate
+Validate / Approve
+    ↓
+Production version + aliases
+```
 
 ---
 
-## Cấu trúc file mới thêm
+## Cấu trúc file buổi 4
 
-```
-mlops-starter-repo/
-├── scripts/
-│   ├── validate_model.py        # Kiểm tra metrics so với ngưỡng
-│   └── promote_model.py         # Promote hoặc rollback model version
-├── configs/
-│   └── thresholds.yaml          # Ngưỡng chấp nhận cho metrics
-└── docs/
-    └── model-card.md            # Tài liệu mô tả model
+```text
+configs/thresholds.yaml              # Ngưỡng tabular / offline validation
+scripts/register_model.py            # Register top-N runs vào Registry
+scripts/validate_and_promote.py      # Auto validate → Staging hoặc Rejected
+scripts/promote_model.py             # Human approve → Production
+scripts/rollback_model.py            # Rollback Production + audit
+scripts/show_registry.py             # In trạng thái Registry
+scripts/validate_model.py            # Offline check reports/evaluation.json
+docs/model-card.md                   # Model Card
+reports/governance_audit.jsonl       # Audit trail (tạo khi chạy script)
 ```
 
 ---
 
 ## Hướng dẫn thực hành
 
-### Bước 1: Checkout, chạy data pipeline và training
+### Bước 0: Chuẩn bị
 
 ```powershell
-git checkout -b session04-registry
+git checkout session/04
+```
 
+Cần MLflow UI + ít nhất 1 run FINISHED có artifact `model` (từ Buổi 3):
+
+```powershell
+mlflow ui --port 5000
+```
+
+Nếu chưa có run / data:
+
+```powershell
 python src/ingestion/ingest.py
 python src/validation/validate.py
 python src/preprocessing/preprocess.py
 python src/split/split.py
+$env:PYTHONUTF8="1"
 python src/training/train.py
 ```
 
-Hoặc sử dụng lại kết quả từ buổi 03 nếu đã có `reports/evaluation.json` và `models/model.pkl`.
+Đổi hyperparams trong `configs/params.yaml` (ví dụ `n_estimators: 50`) rồi train thêm 1 lần để có **≥2 runs** (phục vụ reject + rollback).
 
-### Bước 2: Xem ngưỡng chấp nhận
-
-Nội dung file `configs/thresholds.yaml`:
-
-```yaml
-model_quality:
-  rmse_max: 30000
-  mae_max: 20000
-  r2_min: 0.60
-  mape_max: 25.0
-
-serving:
-  latency_p95_ms: 200
-  error_rate_max: 0.01
-```
-
-| Metric      | Ngưỡng              | Ý nghĩa                                        |
-| ----------- | -------------------- | ----------------------------------------------- |
-| rmse_max    | 30.000               | RMSE phải nhỏ hơn 30.000                       |
-| mae_max     | 20.000               | MAE phải nhỏ hơn 20.000                        |
-| r2_min      | 0.60                 | R² phải lớn hơn hoặc bằng 0.60                 |
-| mape_max    | 25.0                 | MAPE phải nhỏ hơn 25%                          |
-| latency_p95 | 200ms                | Thời gian phản hồi p95 của API phải dưới 200ms |
-| error_rate  | 1%                   | Tỷ lệ lỗi API phải dưới 1%                     |
-
-### Bước 3: Chạy validate_model.py
+### Bước 1: Offline validation (evaluation.json)
 
 ```powershell
 python scripts/validate_model.py
 ```
 
-Kết quả mong đợi:
+Đọc `reports/evaluation.json` so với `configs/thresholds.yaml`. Exit 0 = pass, 1 = fail (dùng được trong CI).
 
-```
-╔══════════════════════════════════════════════════════╗
-║             KẾT QUẢ VALIDATION MODEL                ║
-╠══════════════════════════════════════════════════════╣
-║  RMSE:  25431.12 < 30000.00  ──► PASS ✓            ║
-║  MAE:   18234.56 < 20000.00  ──► PASS ✓            ║
-║  R²:    0.72     > 0.60      ──► PASS ✓            ║
-║  MAPE:  15.3%    < 25.0%     ──► PASS ✓            ║
-╠══════════════════════════════════════════════════════╣
-║  KẾT QUẢ TỔNG: PASS — Model đủ điều kiện triển khai║
-╚══════════════════════════════════════════════════════╝
-```
-
-### Bước 4: Đăng ký model vào MLflow Model Registry
-
-**Cách 1 — Dùng MLflow CLI:**
-
-```powershell
-mlflow models register -m "runs:/<run_id>/model" -n "house-price-model"
-```
-
-**Cách 2 — Dùng Python:**
-
-```python
-import mlflow
-
-mlflow.set_tracking_uri("http://localhost:5000")
-
-result = mlflow.register_model(
-    model_uri="runs:/<run_id>/model",
-    name="house-price-model"
-)
-print(f"Đã đăng ký phiên bản: {result.version}")
-```
-
-### Bước 5: Promote model
-
-```powershell
-python scripts/promote_model.py champion
-```
-
-Kết quả mong đợi:
-
-```
-Model 'house-price-model' phiên bản 1 đã được gán alias 'champion'.
-Phiên bản này sẽ được sử dụng khi serving.
-```
-
-Các alias phổ biến:
-
-| Alias      | Ý nghĩa                                          |
-| ---------- | ------------------------------------------------- |
-| candidate  | Model mới được đăng ký, chờ validation            |
-| staging    | Model đã qua validation, đang kiểm thử            |
-| champion   | Model đang phục vụ trên production                 |
-
-### Bước 6: Đọc và chỉnh sửa Model Card
-
-```powershell
-type docs\model-card.md
-```
-
-Mẫu Model Card:
-
-```markdown
-# Model Card — House Price Prediction
-
-## Tổng quan
-- **Tên model:** house-price-model
-- **Phiên bản:** 1
-- **Thuật toán:** GradientBoostingRegressor
-- **Ngày huấn luyện:** 2026-09-03
-- **Người phụ trách:** MLOps Team
-
-## Mục đích sử dụng
-Dự đoán giá nhà dựa trên các đặc trưng: diện tích, số phòng, tuổi nhà, vị trí.
-
-## Dữ liệu huấn luyện
-- **Nguồn:** Kaggle King County (`kc_house_data.csv` → `kc_house_data.csv`)
-- **Số lượng:** ~21510 bản ghi (King County)
-- **Thời gian thu thập:** 2026
-- **Chia tập:** train 70%, validation 10%, test 20%
-
-## Hiệu năng
-| Tập dữ liệu | RMSE     | MAE      | R²   | MAPE  |
-| ------------ | -------- | -------- | ---- | ----- |
-| Validation   | 25431.12 | 18234.56 | 0.72 | 15.3% |
-| Test         | 26102.45 | 19012.33 | 0.70 | 16.1% |
-
-## Giới hạn và rủi ro
-- Chỉ áp dụng cho thị trường bất động sản trong phạm vi dữ liệu huấn luyện
-- Không xử lý tốt khi giá nhà biến động đột biến (data drift)
-- Dữ liệu huấn luyện có thể không đại diện cho mọi khu vực
-
-## Hướng dẫn sử dụng
-Gọi API prediction endpoint với JSON chứa các trường: area, bedrooms,
-bathrooms, age, floors, location.
-```
-
-Chỉnh sửa Model Card phù hợp với kết quả thực tế của bạn.
-
-### Bước 7: Thử rollback scenario
-
-Giả sử model mới (phiên bản 2) có kết quả kém hơn, bạn muốn quay về phiên bản 1:
-
-```powershell
-python scripts/promote_model.py champion --version 1
-```
-
-Kết quả:
-
-```
-Rollback thành công. Model 'house-price-model' phiên bản 1 đã được gán lại alias 'champion'.
-```
-
----
-
-## Chi tiết code
-
-### `scripts/validate_model.py`
-
-Chức năng:
-
-1. Đọc file `reports/evaluation.json` để lấy metrics thực tế
-2. Đọc file `configs/thresholds.yaml` để lấy ngưỡng chấp nhận
-3. So sánh từng metric với ngưỡng tương ứng:
-   - `rmse` ≤ `rmse_max` → PASS
-   - `mae` ≤ `mae_max` → PASS
-   - `r2` ≥ `r2_min` → PASS
-   - `mape` ≤ `mape_max` → PASS
-4. In kết quả PASS/FAIL cho từng metric
-5. Kết luận tổng: PASS nếu tất cả metrics đạt, FAIL nếu bất kỳ metric nào không đạt
-6. Trả về exit code 0 (thành công) hoặc 1 (thất bại) — hữu ích cho CI/CD
-
-### `scripts/promote_model.py`
-
-Chức năng:
-
-1. Nhận đối số dòng lệnh: alias (candidate/staging/champion) và tùy chọn version
-2. Kết nối đến MLflow Tracking Server
-3. Lấy phiên bản model mới nhất (hoặc phiên bản chỉ định)
-4. Gán alias cho phiên bản đó bằng `client.set_registered_model_alias()`
-5. In xác nhận thành công
-
-Sử dụng:
-
-```powershell
-python scripts/promote_model.py candidate
-python scripts/promote_model.py staging
-python scripts/promote_model.py champion
-python scripts/promote_model.py champion --version 1
-```
-
-### `configs/thresholds.yaml`
+### Bước 2: Xem ngưỡng Registry
 
 ```yaml
-model_quality:
-  rmse_max: 30000
-  mae_max: 20000
-  r2_min: 0.60
-  mape_max: 25.0
-
-serving:
-  latency_p95_ms: 200
-  error_rate_max: 0.01
+tabular:
+  r2_min: 0.75
+  rmse_max: 200000
+  mae_max: 120000
 ```
 
-Hai nhóm ngưỡng:
+| Key | Metric run | Ý nghĩa |
+| --- | --- | --- |
+| `r2_min` | `test_r2` | R² test tối thiểu |
+| `rmse_max` | `test_rmse` | RMSE test tối đa (USD) |
+| `mae_max` | `test_mae` | MAE test tối đa |
 
-- **model_quality** — Dùng trong `validate_model.py` để kiểm tra chất lượng model trước khi triển khai
-- **serving** — Dùng trong monitoring để kiểm tra hiệu năng API sau khi triển khai
+### Bước 3: Register ≥2 version
+
+```powershell
+$env:PYTHONUTF8="1"
+$env:MLFLOW_TRACKING_URI="http://localhost:5000"
+python scripts/register_model.py --model-name house-price-model --n 2
+python scripts/show_registry.py
+```
+
+Script chọn top run theo `test_r2` (có artifact `model`), gắn tag `git_commit`, `dataset_version`, `lifecycle=Candidate`.
+
+Mở http://localhost:5000/#/models → `house-price-model`.
+
+### Bước 4: Automated validation → Staging / Rejected
+
+```powershell
+python scripts/validate_and_promote.py --model-name house-price-model --version 1 --track tabular
+python scripts/validate_and_promote.py --model-name house-price-model --version 2 --track tabular
+python scripts/show_registry.py
+```
+
+- Pass → stage/alias **Staging**, tag `validation_status=passed`
+- Fail → **không** promote, tag `validation_status=rejected`, exit code 1
+
+Muốn chắc có 1 version reject: tạm tăng `r2_min: 0.99` trong `thresholds.yaml`, validate version kém hơn, rồi trả lại ngưỡng.
+
+### Bước 5: Human approve → Production
+
+Checklist:
+
+```text
+[ ] validation_status=passed
+[ ] evaluation / metrics ổn
+[ ] đủ metadata (run_id, git_commit)
+[ ] có người approve (lab: --approved-by)
+```
+
+```powershell
+python scripts/promote_model.py --model-name house-price-model --version 1 --approved-by ml-lead --reason "pass offline gate"
+python scripts/show_registry.py
+```
+
+### Bước 6: Rollback
+
+Giả sử Production mới có vấn đề (lab: promote version khác rồi rollback):
+
+```powershell
+python scripts/rollback_model.py --model-name house-price-model --to-version 1 --reason "canary error_rate spike (lab demo)"
+python scripts/show_registry.py
+```
+
+Audit ghi vào `reports/governance_audit.jsonl`.
+
+### Bước 7: Traceability + Model Card
+
+Điền bảng (mẫu):
+
+| Thông tin | Giá trị |
+| --- | --- |
+| Model name/version | house-price-model / 1 |
+| Experiment run | `<run_id>` |
+| Dataset version | kc_house_data_session02 |
+| Git commit | `git rev-parse --short HEAD` |
+| Metrics | test_r2 / test_rmse / test_mae |
+| Validated by | automated_pipeline |
+| Approved by | ml-lead |
+| Rollback target | version ổn định trước đó |
+
+Chỉnh `docs/model-card.md` cho khớp metrics thật.
+
+Chuỗi audit mẫu:
+
+```text
+POST /predict → house-price-model v1 (champion)
+    → run <run_id> → git commit → dataset version → metrics → approved_by
+```
+
+### Bước 8 (tuỳ chọn): So sánh run Buổi 3
+
+```powershell
+python scripts/compare_runs.py --n 5
+```
 
 ---
 
-## Bài tập sau buổi học
+## Sản phẩm cuối buổi
 
-1. **Tự động hóa quy trình** — Viết script kết hợp: train → validate → register → promote tự động nếu tất cả metrics đạt ngưỡng.
-2. **Thêm ngưỡng nghiêm ngặt hơn** — Điều chỉnh `thresholds.yaml` (ví dụ: r2_min = 0.75) và quan sát model nào PASS/FAIL.
-3. **Viết Model Card chi tiết** — Bổ sung phần: phân tích công bằng (fairness) theo location, so sánh hiệu năng giữa các nhóm dữ liệu.
-4. **Rollback có kiểm tra** — Viết script rollback có ghi nhật ký: ai rollback, khi nào, lý do, phiên bản trước và sau.
+- [ ] ≥2 version trong Registry
+- [ ] 1 version Staging (pass) và demo 1 version Rejected (fail)
+- [ ] 1 version Production / alias `champion`
+- [ ] Rollback có lý do + dòng trong `governance_audit.jsonl`
+- [ ] Model Card đã điền
+- [ ] Bảng traceability của nhóm
+
+---
+
+## Bài tập sau buổi
+
+1. Siết ngưỡng (`r2_min: 0.80`) và quan sát version nào bị reject.
+2. Gộp train → register → validate thành một script CI.
+3. Bổ sung fairness theo `location` vào Model Card.
+4. (Nâng cao) Đọc phần canary/shadow trong giáo trình Buổi 4 — chuẩn bị cho serving Buổi 5.
 
 ---
 
 ## Buổi tiếp theo
 
-**Buổi 05 — Đóng gói Model và Triển khai API**: Đóng gói model bằng Docker, xây dựng REST API với FastAPI, viết health check và test endpoint dự đoán.
+**Buổi 05 — Docker + FastAPI Serving**: đóng gói model Production, API predict, health check.

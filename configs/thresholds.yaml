@@ -1,13 +1,14 @@
+tabular:
+  r2_min: 0.75
+  rmse_max: 200000
+  mae_max: 120000
+
+serving:
+  latency_p95_max_ms: 500
+  error_rate_max: 0.01
+
 model_validation:
-  min_r2: 0.60
-  max_rmse: 250000
-  max_mae: 150000
+  min_r2: 0.75
+  max_rmse: 200000
+  max_mae: 120000
   min_samples: 100
-
-performance:
-  max_latency_ms: 200
-  max_memory_mb: 512
-
-data_quality:
-  max_null_ratio: 0.05
-  max_duplicate_ratio: 0.01

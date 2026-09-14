@@ -4,60 +4,70 @@
 
 | Mục | Chi tiết |
 |-----|----------|
-| Tên model | GradientBoostingRegressor |
-| Phiên bản | 0.1.0 |
-| Mục tiêu | Dự đoán giá nhà dựa trên đặc trưng |
-| Framework | Scikit-learn |
-| Ngày tạo | 2024 |
+| Tên model (Registry) | house-price-model |
+| Thuật toán | GradientBoostingRegressor |
+| Framework | scikit-learn |
+| Experiment | house-price-prediction |
+| Owner | MLOps lab / ml-lead |
 
-## Mô tả
+## Mục đích sử dụng
 
-Model sử dụng thuật toán Gradient Boosting Regression để dự đoán giá nhà
-dựa trên 6 đặc trưng đầu vào: diện tích, số phòng ngủ, số phòng tắm,
-tuổi nhà, số tầng và zipcode.
+Dự đoán giá nhà (USD) tại King County từ đặc trưng tabular: area, bedrooms, bathrooms, age, floors, location.
+
+**Ngoài phạm vi:** thị trường ngoài King County, dữ liệu sau 2015 chưa retrain, định giá pháp lý/tín dụng chính thức.
 
 ## Dữ liệu huấn luyện
 
-- **Nguồn**: King County house sales → kc_house_data.csv (~21510 bản ghi)
-- **Chia tập**: 70% train, 10% validation, 20% test
-- **Tiền xử lý**: LabelEncoder cho location, StandardScaler cho biến số
+- Nguồn: Kaggle House Sales in King County (`kc_house_data.csv`)
+- Mapping: `sqft_living→area`, `yr_built→age`, `zipcode→location`
+- Split: theo `configs/params.yaml` / phiên bản DVC buổi 2
+- Preprocess: LabelEncoder (`location`), StandardScaler (numeric)
 
-## Đặc trưng đầu vào
+## Đặc trưng
 
-| Đặc trưng | Kiểu | Mô tả |
-|-----------|------|-------|
-| area | float | Diện tích (sqft) |
-| bedrooms | int | Số phòng ngủ |
-| bathrooms | int | Số phòng tắm |
-| age | int | Tuổi nhà (năm) |
-| floors | float | Số tầng |
-| location | str | Vị trí (mã hóa LabelEncoder) |
+| Feature | Mô tả |
+|---------|--------|
+| area | Diện tích sống (sqft) |
+| bedrooms / bathrooms | Số phòng |
+| age | 2015 - yr_built |
+| floors | Số tầng |
+| location | Zipcode đã encode |
 
-## Tham số huấn luyện
+(Tuỳ run Buổi 3 có thể thêm feature engineered: total_rooms, bath_bed_ratio, ...)
 
-- n_estimators: 200
-- max_depth: 5
-- learning_rate: 0.1
-- random_state: 42
+## Metrics chấp nhận (lab)
 
-## Tiêu chí chấp nhận
+Xem `configs/thresholds.yaml`:
 
-| Metric | Ngưỡng | Mô tả |
-|--------|--------|-------|
-| R² | >= 0.60 | Hệ số xác định |
-| RMSE | <= 250000 | Sai số bình phương trung bình |
-| MAE | <= 150000 | Sai số tuyệt đối trung bình |
+- `test_r2 >= 0.75`
+- `test_rmse <= 200000`
+- `test_mae <= 120000`
 
-## Giới hạn và rủi ro
+Điền số liệu run Production thật sau khi promote:
 
-- Model dùng dữ liệu King County 2014–2015 (Kaggle), không phản ánh thị trường hiện tại
-- Hiệu năng có thể giảm khi phân phối dữ liệu thay đổi (data drift)
-- Không xử lý tốt zipcode ngoài phân phối huấn luyện
+| Tập | RMSE | MAE | R² |
+|-----|------|-----|-----|
+| Validation | | | |
+| Test | | | |
 
-## Quy trình cập nhật
+## Governance
 
-1. Phát hiện data drift qua hệ thống monitoring
-2. Thu thập dữ liệu mới
-3. Huấn luyện lại model với pipeline DVC
-4. Validate model theo tiêu chí chấp nhận
-5. Promote model nếu đạt ngưỡng
+| Bước | Cách làm trong lab |
+|------|---------------------|
+| Register | `scripts/register_model.py` |
+| Auto validate | `scripts/validate_and_promote.py` → Staging / Rejected |
+| Approve | `scripts/promote_model.py` → Production + tag `approved_by` |
+| Rollback | `scripts/rollback_model.py` + `reports/governance_audit.jsonl` |
+
+## Rủi ro và hạn chế
+
+- Dữ liệu 2014–2015; drift giá thị trường hiện tại
+- Zipcode lạ / outlier diện tích làm sai số lớn
+- Feature engineered không đảm bảo luôn tốt hơn baseline
+
+## Liên hệ cập nhật
+
+1. Detect drift (Buổi 7) → thu thập data → DVC version mới  
+2. Retrain + log MLflow (Buổi 3)  
+3. Register → validate → approve (Buổi 4)  
+4. Redeploy serving (Buổi 5)
