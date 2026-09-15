@@ -42,3 +42,4 @@ Thumbs.db
 .dvc/tmp
 
 mlflow.db
+reports/*.jsonl
