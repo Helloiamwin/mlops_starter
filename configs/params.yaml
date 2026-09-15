@@ -34,5 +34,5 @@ training:
   experiment_name: house-price-prediction
 
 mlflow:
-  tracking_uri: http://localhost:5000
+  tracking_uri: file:./mlruns
   experiment_name: house-price-prediction
