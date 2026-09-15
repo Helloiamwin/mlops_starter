@@ -199,21 +199,44 @@ Checklist:
 [ ] có người approve (lab: --approved-by)
 ```
 
+**Cách A — Script (khuyến nghị, có audit + tag `approved_by`)**
+
 ```powershell
 python scripts/promote_model.py --model-name house-price-model --version 1 --approved-by ml-lead --reason "pass offline gate"
 python scripts/show_registry.py
 ```
 
+**Cách B — Trên MLflow UI** (không có nút tên "Approve")
+
+1. Mở http://localhost:5000 → **Models** → `house-price-model`
+2. Chọn version đã `validation_status=passed` (Staging)
+3. Gán alias **`champion`** (Add alias / edit aliases) — đây là “Production” trong lab
+4. (Tuỳ UI) đổi Stage legacy sang **Production** nếu còn cột Stage
+5. Thêm tag thủ công: `approved_by=ml-lead`, `approval_reason=...`
+
+UI **không** tự ghi `reports/governance_audit.jsonl`. Muốn có audit trail thì dùng script.
+
 ### Bước 6: Rollback
 
-Giả sử Production mới có vấn đề (lab: promote version khác rồi rollback):
+Giả sử Production mới có vấn đề (lab: đã có version Production mới, cần quay về version ổn định).
+
+**Cách A — Script**
 
 ```powershell
 python scripts/rollback_model.py --model-name house-price-model --to-version 1 --reason "canary error_rate spike (lab demo)"
 python scripts/show_registry.py
 ```
 
-Audit ghi vào `reports/governance_audit.jsonl`.
+**Cách B — Trên MLflow UI**
+
+1. Models → `house-price-model`
+2. Gỡ / chuyển alias **`champion`** từ version đang lỗi sang version cũ ổn định (ví dụ v1)
+3. (Tuỳ UI) set Stage version cũ = Production, version mới = Archived
+4. Thêm tag `rollback_reason=...` trên version được khôi phục
+
+Rollback trên UI = **đổi alias `champion`** (hoặc Stage Production) về version trước. Serving sau này load `models:/house-price-model@champion` sẽ trỏ đúng bản đã rollback.
+
+Audit ghi vào `reports/governance_audit.jsonl` (chỉ khi dùng script).
 
 ### Bước 7: Traceability + Model Card
 
