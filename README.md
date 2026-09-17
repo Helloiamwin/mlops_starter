@@ -6,6 +6,7 @@
 
 ## Mục tiêu buổi học
 
+- Cấu hình Git lần đầu, tạo **repo GitLab của riêng bạn** (không dùng chung cả lớp)
 - Build image Docker và chạy API trong container (ôn buổi 05)
 - Dùng **GitLab CI + GitLab Runner trên máy bạn** — công cụ CI/CD đơn giản nhất để thấy kết quả ngay trên laptop
 - Mỗi lần `git push` tự lint → test → validate → (retrain nếu cần) → build image → serve container mới
@@ -14,6 +15,29 @@
 ---
 
 ## Kiến thức lý thuyết
+
+### Git — vài khái niệm cho người mới
+
+| Khái niệm | Ý nghĩa |
+|---|---|
+| **repo** | Thư mục project có lịch sử thay đổi (`.git`) |
+| **commit** | Một bản ghi "đã lưu" kèm message |
+| **branch** | Nhánh làm việc, buổi này dùng `session/06` |
+| **remote** | Bản copy trên internet. Lab có 2 remote: `origin` (GitHub lớp) và `gitlab` (repo của bạn) |
+| **push** | Đẩy commit từ máy lên remote → GitLab nhận và chạy CI |
+
+Lệnh hay dùng: `git status` (đang sửa gì) → `git add` → `git commit` → `git push`.
+
+### Mỗi người một repo Git — đừng dùng chung
+
+Lab chạy trên **nhiều máy**. Không dùng chung 1 GitLab project cho cả lớp.
+
+| Cách | Kết quả |
+|---|---|
+| **Mỗi học viên 1 repo GitLab + 1 runner trên laptop mình** | Push của bạn chỉ build/serve Docker trên máy bạn. Đúng bài lab. |
+| Cả lớp push 1 repo | Runner máy A có thể nhận job của B → container chạy nhầm máy, pipeline lẫn commit, khó chấm bài. |
+
+Repo GitHub buổi học (`origin`) chỉ để **lấy đề**. Repo GitLab của bạn (`gitlab`) để **nộp bài và chạy CI**.
 
 ### CI / CD / CT trong MLOps
 
@@ -24,7 +48,7 @@
 | **CT** Continuous Training | Retrain khi data/code/params đổi, chỉ nhận model đạt ngưỡng | Job `train` + `scripts/continuous_train.py` |
 
 ```
-git push
+git push gitlab session/06
    │
    ▼
 ┌─────────┐   ┌─────────┐   ┌──────────┐   ┌─────────┐   ┌─────────┐   ┌──────────┐
@@ -36,7 +60,7 @@ git push
                                                                   localhost:8000
 ```
 
-Job `train` **không chạy mọi push**. Chỉ chạy khi đổi `src/`, `configs/params.yaml`, `configs/thresholds.yaml`, `data/`, hoặc `dvc.yaml`. Push sửa README thì bỏ qua CT, vẫn build + deploy image hiện có.
+Job `train` **không chạy mọi push**. Chỉ chạy khi đổi `src/`, `configs/params.yaml`, `configs/thresholds.yaml`, `data/`, hoặc `dvc.yaml`. Push sửa docs thì bỏ qua CT, vẫn build + deploy image hiện có.
 
 ### Vì sao Runner chạy trên máy bạn?
 
@@ -86,10 +110,96 @@ mlops_starter/
 
 Lệnh theo **PowerShell**. Cần Docker Desktop đang chạy.
 
-### Bước 0: Checkout và môi trường
+### Bước 0: Git lần đầu + repo của bạn + môi trường
+
+Chưa dùng Git: làm **0a → 0b → 0c → 0d**. Đã clone repo rồi thì làm 0a (nếu chưa config), 0c, rồi 0d.
+
+**0a — Cài Git và khai báo danh tính (1 lần / máy)**
+
+1. Cài [Git for Windows](https://git-scm.com/download/win), để mặc định, xong mở **PowerShell mới**.
+2. Kiểm tra:
 
 ```powershell
+git --version
+```
+
+Phải in ra kiểu `git version 2.xx.x`.
+
+3. Ghi tên và email — GitLab dùng email này nhận diện commit. Thay bằng **tên thật** và email bạn dùng trên GitLab:
+
+```powershell
+git config --global user.name "Nguyen Van A"
+git config --global user.email "a.nguyen@gmail.com"
+git config --global --list
+```
+
+Phải thấy `user.name` và `user.email`. Chỉ làm 1 lần trên máy; các repo sau dùng lại.
+
+**0b — Lấy code buổi học**
+
+Nếu **chưa có** thư mục project:
+
+```powershell
+cd D:\Workspace\mlops
+git clone https://github.com/nhavanntd31/mlops_starter.git
+cd mlops_starter
+```
+
+Nếu **đã có** (buổi 05):
+
+```powershell
+cd D:\Workspace\mlops\mlops_starter
+```
+
+Lấy nhánh buổi 06:
+
+```powershell
+git fetch origin
 git checkout session/06
+git pull origin session/06
+```
+
+- `clone` = copy repo về máy
+- `checkout` = chuyển nhánh
+- `pull` = lấy commit mới từ remote lớp
+
+**0c — Tạo repo GitLab của riêng bạn (bắt buộc, không dùng chung)**
+
+1. Đăng ký / đăng nhập [gitlab.com](https://gitlab.com)
+2. **New project** → **Create blank project**
+3. Project name: `mlops_starter` (hoặc `mlops-lab-tenban`)
+4. Visibility: **Private**
+5. **Bỏ tick** *Initialize repository with a README* — để trống, nếu không `git push` sẽ xung đột
+6. Create project → copy URL HTTPS, ví dụ `https://gitlab.com/tenban/mlops_starter.git`
+
+Gắn remote tên `gitlab`. Không ghi đè `origin` (GitHub lớp):
+
+```powershell
+git remote add gitlab https://gitlab.com/tenban/mlops_starter.git
+git remote -v
+```
+
+Phải thấy 2 remote: `origin` (đề bài) và `gitlab` (repo bạn).
+
+Đẩy nhánh buổi 06 lên repo của bạn:
+
+```powershell
+git push -u gitlab session/06
+```
+
+Lần đầu GitLab hỏi đăng nhập: username GitLab + **Personal Access Token** (không phải mật khẩu web). Tạo token: GitLab → avatar → **Access Tokens** → scope `write_repository` → copy token, dán vào chỗ password.
+
+Mở GitLab trên web: thấy nhánh `session/06` và file `.gitlab-ci.yml`.
+
+Nếu báo `remote gitlab already exists`:
+
+```powershell
+git remote set-url gitlab https://gitlab.com/tenban/mlops_starter.git
+```
+
+**0d — Môi trường Python**
+
+```powershell
 venv\Scripts\activate
 $env:PYTHONUTF8 = "1"
 pip install -r requirements.txt
@@ -160,7 +270,7 @@ Kết quả mong đợi:
 
 ```
 All configs valid
-... 5 passed / 8 passed ...
+... 10 passed ...
 [CT] dvc repro
 [Training] Metrics:
   test_r2: 0.7...
@@ -173,18 +283,13 @@ Thử gate config: đổi `learning_rate: 0` rồi chạy lại `validate_config
 
 ### Bước 4: Gắn GitLab Runner trên máy bạn
 
-Repo đang ở GitHub. Buổi này dùng GitLab CI nên cần **một project GitLab** (free) và runner cài local.
+Pipeline đọc `.gitlab-ci.yml` trên **repo GitLab của bạn**. Runner cài trên **đúng laptop đó**. Không đăng ký runner vào repo của bạn khác.
 
-**4a — Tạo project GitLab và đẩy code**
+**4a — Tắt runner dùng chung của GitLab.com**
 
-1. [gitlab.com](https://gitlab.com) → New project → Create blank project (Private cũng được)
-2. **Settings → CI/CD → Runners** → tắt **Enable instance runners for this project** (tránh job chạy trên máy GitLab, không phải máy bạn)
-3. Copy URL project, ví dụ `https://gitlab.com/<user>/mlops_starter.git`
+Trong project GitLab **của bạn**: Settings → CI/CD → Runners → tắt **Enable instance runners for this project**.
 
-```powershell
-git remote add gitlab https://gitlab.com/<user>/mlops_starter.git
-git push -u gitlab session/06
-```
+Nếu để bật, job có thể chạy trên máy GitLab — không build được Docker trên laptop bạn.
 
 **4b — Cài GitLab Runner (Windows)**
 
@@ -193,9 +298,9 @@ New-Item -ItemType Directory -Force -Path C:\GitLab-Runner | Out-Null
 Invoke-WebRequest -Uri "https://gitlab-runner-downloads.s3.amazonaws.com/latest/binaries/gitlab-runner-windows-amd64.exe" -OutFile C:\GitLab-Runner\gitlab-runner.exe
 ```
 
-**4c — Đăng ký runner**
+**4c — Đăng ký runner với repo của bạn**
 
-GitLab → Settings → CI/CD → Runners → **New project runner**:
+GitLab (project của bạn) → Settings → CI/CD → Runners → **New project runner**:
 
 - Tags: `local` (đúng chữ này — khớp `tags: [local]` trong `.gitlab-ci.yml`)
 - Bỏ chọn "Run untagged jobs"
@@ -215,13 +320,18 @@ Runner dùng Python/Docker của máy bạn. Cần `venv\` ở root repo và Doc
 
 ### Bước 5: Push — CI tự build và serve image mới
 
-Giữ compose đang chạy từ Bước 2. Sửa một dòng không liên quan train, ví dụ `docs/architecture.md` hoặc commit file lab:
+Giữ compose đang chạy từ Bước 2. Tập commit như người mới: sửa file nhỏ (không đụng train), xem Git thấy gì, đẩy lên **repo gitlab của bạn**.
+
+Ví dụ sửa `docs/architecture.md` thêm một dòng, rồi:
 
 ```powershell
-git add Dockerfile docker-compose.yml .dockerignore .gitlab-ci.yml app/model_loader.py scripts/continuous_train.py scripts/validate_config.py tests/test_api.py README.md
-git commit -m "feat: session 06 ci cd ct pipeline"
+git status
+git add docs/architecture.md
+git commit -m "lab: trigger ci pipeline"
 git push gitlab session/06
 ```
+
+Lần sau: `git add` file đã sửa → `git commit -m "..."` → `git push gitlab session/06`.
 
 GitLab → **Build → Pipelines**. Job `train` **skipped** (không đụng code train/data). `docker-build` + `deploy-local` chạy trên laptop.
 
@@ -259,7 +369,7 @@ git push gitlab session/06
 Pipeline lần này **chạy job `train`**:
 
 ```
-dvc repro          → chỉ re-run stage data nếu params data đổi; train job luôn gọi train.py
+dvc repro
 python src/training/train.py
 python scripts/validate_model.py
 ```
@@ -277,7 +387,7 @@ python scripts/sample_predict.py
 
 ### Bước 7: Thấy quality gate chặn deploy
 
-Tạm hạ ngưỡng ngược: trong `configs/thresholds.yaml` đặt `min_r2: 0.99` (model lab ~0.75–0.80 sẽ FAIL).
+Tạm đặt trong `configs/thresholds.yaml`: `min_r2: 0.99` (model lab ~0.75–0.80 sẽ FAIL).
 
 ```powershell
 git add configs/thresholds.yaml
@@ -285,9 +395,9 @@ git commit -m "test: raise r2 gate to fail CT"
 git push gitlab session/06
 ```
 
-Job `train` FAIL (`R2 >= 0.99`). `deploy-local` không chạy (cần `train` khi job đó có trong pipeline). Container cũ vẫn serve — đúng hành vi production: **model kém không lên**.
+Job `train` FAIL (`R2 >= 0.99`). Stage `build` / `deploy` bị skip. Container cũ vẫn serve — đúng hành vi production: **model kém không lên**.
 
-Trả `min_r2: 0.60`, commit + push lại.
+Trả `min_r2: 0.60`, commit + `git push gitlab session/06`.
 
 Chạy CT tay không cần push:
 
@@ -299,16 +409,16 @@ python scripts/continuous_train.py
 
 ## Chi tiết `.gitlab-ci.yml`
 
-6 stage, mọi job gắn tag `local` → chỉ runner laptop nhận.
+6 stage, mọi job gắn tag `local` → chỉ runner laptop của **repo đó** nhận.
 
 | Job | Stage | Khi nào chạy | Việc làm |
 |---|---|---|---|
 | `lint` | lint | mọi push | `ruff check` |
 | `test` | test | mọi push | `pytest` + JUnit artifact |
 | `validate-config` | validate | mọi push | schema + range siêu tham số |
-| `train` | train | đổi code/data/params, hoặc bấm Play | `continuous_train.py` |
+| `train` | train | đổi code/data/params, hoặc Run pipeline trên web | `continuous_train.py` |
 | `docker-build` | build | mọi push | `docker build` + smoke `import app.main` |
-| `deploy-local` | deploy | sau build (bị skip nếu train FAIL) | `docker compose up -d --build` + curl health |
+| `deploy-local` | deploy | sau build; skip nếu train FAIL | `docker compose up -d --build` + curl health |
 
 Job `train` skipped thì GitLab vẫn chạy `build` + `deploy`. Job `train` FAIL thì hai stage sau bị bỏ — không serve model kém.
 
@@ -339,9 +449,12 @@ Gate mặc định:
 
 | Lỗi | Nguyên nhân | Cách sửa |
 |---|---|---|
-| Job pending forever | Không có runner tag `local`, hoặc instance runners đang bật | Bật runner laptop, tắt instance runners |
+| `git: command not found` | Chưa cài Git hoặc chưa mở lại PowerShell | Cài Git for Windows, đóng/mở terminal |
+| `Authentication failed` khi push GitLab | Dùng mật khẩu web | Dùng Personal Access Token, scope `write_repository` |
+| `remote origin already exists` / nhầm repo | Đẩy vào repo lớp hoặc repo bạn khác | `git remote -v` — `origin` = GitHub lớp, `gitlab` = repo bạn; `git push gitlab session/06` |
+| Job pending forever | Không có runner tag `local`, hoặc instance runners đang bật | Bật runner laptop **trên project của bạn**, tắt instance runners |
 | `docker: command not found` | Docker Desktop tắt / không có trong PATH của Windows Service | Mở Docker Desktop; đăng nhập lại Windows sau khi cài Docker; `gitlab-runner restart` |
-| `model_loaded: false` | Build image khi chưa có `models/*.pkl` | Chạy Bước 0 train, rồi `dvc repro` + `train.py` |
+| `model_loaded: false` | Build image khi chưa có `models/*.pkl` | Chạy Bước 0d train, rồi `dvc repro` + `train.py` |
 | `validate_config` FAIL data path | Chưa có CSV raw | Lấy data buổi 02 vào `data/raw/kc_house_data.csv` |
 | `train` FAIL R2 | Ngưỡng quá cao hoặc data lệch | Xem `reports/evaluation.json`, nới `thresholds.yaml` có chủ đích |
 | Cổng 8000 already allocated | Còn container/uvicorn buổi 05 | `docker compose down`; `docker rm -f house-price-api` |
@@ -353,7 +466,7 @@ Gate mặc định:
 ## Bài tập sau buổi học
 
 1. **CT từ GitLab UI** — Build → Pipelines → Run pipeline. Source `web` luôn chạy job `train`. So sánh với push chỉ sửa README (train skipped).
-2. **Fail-then-fix** — đặt `n_estimators: 0`, push, chỉ ra job nào FAIL. Sửa lại, push, xác nhận deploy chạy.
+2. **Fail-then-fix** — đặt `n_estimators: 0`, push lên **gitlab của bạn**, chỉ ra job nào FAIL. Sửa lại, push, xác nhận deploy chạy.
 3. **Gắn SHA vào health** — thêm field `git_sha` vào `HealthResponse` đọc từ `MODEL_VERSION`.
 4. **Chặn deploy khi test FAIL** — cố tình phá 1 unit test, push, chứng minh container cũ không bị thay (so `loaded_at` trước/sau).
 
