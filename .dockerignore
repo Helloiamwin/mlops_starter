@@ -20,4 +20,4 @@ mlflow.db
 *.md
 .pytest_cache
 .ruff_cache
-.gitlab-ci.yml
+.github
