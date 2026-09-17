@@ -1,0 +1,24 @@
+services:
+  api:
+    image: house-price-api:${MODEL_VERSION:-latest}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: house-price-api
+    ports:
+      - "8000:8000"
+    environment:
+      MODEL_VERSION: ${MODEL_VERSION:-0.1.0}
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s

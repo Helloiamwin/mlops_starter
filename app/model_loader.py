@@ -7,7 +7,7 @@ class ModelHolder:
         self.model = None
         self.scaler = None
         self.label_encoder = None
-        self.version = "0.1.0"
+        self.version = os.environ.get("MODEL_VERSION", "0.1.0")
         self.loaded_at = None
 
     def load(self, model_dir="models"):
