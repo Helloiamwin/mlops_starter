@@ -2,11 +2,13 @@ name: ci-cd-ct
 
 on:
   push:
+    branches:
+      - session/06
   workflow_dispatch:
 
 defaults:
   run:
-    shell: pwsh
+    shell: powershell
 
 env:
   PYTHONUTF8: "1"

@@ -404,7 +404,7 @@ Jenkins `stage { steps { } }` ≈ GitHub `jobs.*.steps`. Step đỏ → pipeline
 | Lỗi | Nguyên nhân | Cách sửa |
 |---|---|---|
 | `git: command not found` | Chưa cài Git | Cài Git for Windows, mở lại PowerShell |
-| Job queued / waiting for a runner | Chưa cài runner, sai label, hoặc Actions tắt trên fork | Settings → Runners: Idle + label `local`; enable workflows |
+| `pwsh: command not found` | Runner Windows không có PowerShell 7 | Workflow dùng `shell: powershell` (Windows PowerShell). Commit/push file `ci.yml` mới |
 | Push nhầm repo lớp | `origin` vẫn là `nhavanntd31/...` | `git remote -v` — `origin` phải là fork; Bước 0c |
 | `docker: command not found` trong Actions | Docker Desktop tắt / service runner không thấy Docker | Mở Docker Desktop; `svc.cmd stop` rồi `start`; đăng nhập lại Windows |
 | `model_loaded: false` | Chưa có `models/*.pkl` lúc build | Bước 0d: `dvc repro` + `train.py` |
