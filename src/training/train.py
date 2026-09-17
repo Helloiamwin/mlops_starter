@@ -4,6 +4,7 @@ import yaml
 import pickle
 import os
 import json
+from urllib.request import urlopen
 from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 
@@ -14,9 +15,38 @@ try:
 except ImportError:
     HAS_MLFLOW = False
 
+
 def load_config(path="configs/params.yaml"):
     with open(path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
+
+
+def _http_reachable(uri, timeout=2.0):
+    try:
+        urlopen(uri.rstrip("/") + "/health", timeout=timeout)
+        return True
+    except Exception:
+        try:
+            urlopen(uri, timeout=timeout)
+            return True
+        except Exception:
+            return False
+
+
+def _setup_mlflow(config):
+    tracking_uri = os.environ.get("MLFLOW_TRACKING_URI") or config.get("mlflow", {}).get(
+        "tracking_uri", "sqlite:///mlflow.db"
+    )
+    if tracking_uri.startswith("http") and not _http_reachable(tracking_uri):
+        print(f"[Training] MLflow unreachable at {tracking_uri}, using sqlite:///mlflow.db")
+        tracking_uri = "sqlite:///mlflow.db"
+    mlflow.set_tracking_uri(tracking_uri)
+    experiment_name = config.get("training", {}).get("experiment_name") or config.get(
+        "mlflow", {}
+    ).get("experiment_name", "house-price-prediction")
+    mlflow.set_experiment(experiment_name)
+    return tracking_uri
+
 
 def train(config=None):
     if config is None:
@@ -37,18 +67,16 @@ def train(config=None):
     X_test = test_df.drop(columns=[target])
     y_test = test_df[target]
 
+    use_mlflow = False
+    tracking_uri = None
     if HAS_MLFLOW:
-        tracking_uri = config.get("mlflow", {}).get("tracking_uri", "http://localhost:5000")
-        experiment_name = config["training"]["experiment_name"]
         try:
-            mlflow.set_tracking_uri(tracking_uri)
-        except Exception:
-            pass
-        try:
-            mlflow.set_experiment(experiment_name)
-        except Exception:
-            pass
+            tracking_uri = _setup_mlflow(config)
+            use_mlflow = True
+        except Exception as e:
+            print(f"[Training] MLflow setup skipped: {e}")
 
+    print("[Training] Fitting GradientBoostingRegressor...")
     model = GradientBoostingRegressor(**model_params)
     model.fit(X_train, y_train)
 
@@ -68,12 +96,13 @@ def train(config=None):
     for k, v in metrics.items():
         print(f"  {k}: {v:.4f}")
 
-    if HAS_MLFLOW:
+    if use_mlflow:
         try:
             with mlflow.start_run():
                 mlflow.log_params(model_params)
                 mlflow.log_metrics(metrics)
-                mlflow.sklearn.log_model(model, "model")
+                if tracking_uri and tracking_uri.startswith("http"):
+                    mlflow.sklearn.log_model(model, "model")
         except Exception as e:
             print(f"[Training] MLflow logging failed: {e}")
 
@@ -89,6 +118,7 @@ def train(config=None):
     print("[Training] Evaluation saved to reports/evaluation.json")
 
     return model, metrics
+
 
 if __name__ == "__main__":
     train()

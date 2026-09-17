@@ -12,6 +12,8 @@ defaults:
 
 env:
   PYTHONUTF8: "1"
+  MLFLOW_TRACKING_URI: "http://localhost:5000"
+  MLFLOW_DISABLE_AGENT_HINT: "1"
 
 jobs:
   pipeline:
@@ -43,8 +45,8 @@ jobs:
           dvc init --force --no-scm
           dvc repro
 
-      - name: "07 Train"
-        run: python src/training/train.py
+      - name: "07 Pull model"
+        run: python scripts/pull_model.py --alias champion
 
       - name: "08 Model quality gate"
         run: python scripts/validate_model.py
@@ -59,8 +61,8 @@ jobs:
 
       - name: "11 Deploy"
         run: |
-          $sha = $env:GITHUB_SHA.Substring(0, 7)
-          $env:MODEL_VERSION = $sha
+          $manifest = Get-Content models/pull_manifest.json -Raw | ConvertFrom-Json
+          $env:MODEL_VERSION = $manifest.version
           docker compose up -d --build --force-recreate
 
       - name: "12 Health check"

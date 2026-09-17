@@ -36,3 +36,4 @@ training:
 mlflow:
   tracking_uri: http://localhost:5000
   experiment_name: house-price-prediction
+  model_name: house-price-model
