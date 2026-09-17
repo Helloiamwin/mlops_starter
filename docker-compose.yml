@@ -1,14 +1,16 @@
+name: house-price
+
 services:
   api:
-    image: house-price-api:${MODEL_VERSION:-latest}
+    image: house-price-api:${IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: house-price-api
     ports:
       - "8000:8000"
     environment:
       MODEL_VERSION: ${MODEL_VERSION:-0.1.0}
+      IMAGE_TAG: ${IMAGE_TAG:-latest}
     restart: unless-stopped
     healthcheck:
       test:

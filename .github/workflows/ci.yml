@@ -87,9 +87,12 @@ jobs:
       - name: Docker build
         run: |
           $sha = $env:GITHUB_SHA.Substring(0, 7)
+          $env:IMAGE_TAG = $sha
           docker build -t "house-price-api:$sha" -t house-price-api:latest .
       - name: Smoke test
-        run: docker run --rm house-price-api:latest python -c "import app.main"
+        run: |
+          $sha = $env:GITHUB_SHA.Substring(0, 7)
+          docker run --rm "house-price-api:$sha" python -c "import app.main"
 
   deploy:
     name: deploy
@@ -106,9 +109,13 @@ jobs:
           name: model-artifacts
       - name: Deploy
         run: |
+          $sha = $env:GITHUB_SHA.Substring(0, 7)
           $manifest = Get-Content models/pull_manifest.json -Raw | ConvertFrom-Json
+          $env:IMAGE_TAG = $sha
           $env:MODEL_VERSION = $manifest.version
-          docker compose up -d --build --force-recreate
+          docker rm -f house-price-api 2>$null
+          docker compose down --remove-orphans
+          docker compose up -d --no-build --force-recreate --pull never
       - name: Health check
         run: |
           Start-Sleep -Seconds 8

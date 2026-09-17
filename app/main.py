@@ -16,7 +16,7 @@ def startup_event():
 @app.get("/health", response_model=HealthResponse)
 def health():
     return HealthResponse(
-        status="healthy" if model_holder.is_loaded else "unhealthy",
+        status="healthy v3333" if model_holder.is_loaded else "unhealthy",
         model_loaded=model_holder.is_loaded,
         timestamp=datetime.now().isoformat(),
     )
