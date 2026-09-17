@@ -12,86 +12,55 @@ env:
   PYTHONUTF8: "1"
 
 jobs:
-  lint:
-    runs-on: [self-hosted, local]
-    steps:
-      - uses: actions/checkout@v4
-      - name: Lint
-        run: |
-          python -m pip install -q ruff
-          ruff check app src tests scripts --select E,F --ignore E501,E402
-
-  test:
-    runs-on: [self-hosted, local]
-    steps:
-      - uses: actions/checkout@v4
-      - name: Pytest
-        run: |
-          python scripts/ensure_raw.py
-          python -m pip install -q -r requirements.txt pytest fastapi uvicorn
-          pytest tests/ -v --tb=short --junitxml=report.xml
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: pytest-junit
-          path: report.xml
-          if-no-files-found: ignore
-
-  validate:
-    runs-on: [self-hosted, local]
-    steps:
-      - uses: actions/checkout@v4
-      - name: Validate config
-        run: |
-          python -m pip install -q pyyaml
-          python scripts/validate_config.py
-
-  train:
-    needs: [lint, test, validate]
-    runs-on: [self-hosted, local]
-    steps:
-      - uses: actions/checkout@v4
-      - name: Continuous training
-        run: |
-          python -m pip install -q -r requirements.txt
-          python scripts/continuous_train.py
-      - uses: actions/upload-artifact@v4
-        with:
-          name: trained-models
-          path: |
-            models/*.pkl
-            reports/evaluation.json
-
-  build:
-    needs: [train]
-    runs-on: [self-hosted, local]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: trained-models
-      - name: Docker build
-        run: |
-          $sha = $env:GITHUB_SHA.Substring(0, 7)
-          docker build -t "house-price-api:$sha" -t house-price-api:latest .
-          docker run --rm house-price-api:latest python -c "import app.main"
-
-  deploy:
-    needs: [build]
+  pipeline:
+    name: CI / CD / CT
     runs-on: [self-hosted, local]
     environment:
       name: local
       url: http://127.0.0.1:8000/docs
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: trained-models
-      - name: Serve new image
+      - name: "01 Checkout"
+        uses: actions/checkout@v4
+
+      - name: "02 Setup"
+        run: |
+          python -m pip install -q -r requirements.txt
+          python scripts/ensure_raw.py
+
+      - name: "03 Lint"
+        run: python -m ruff check app src tests scripts --select E,F --ignore E501,E402
+
+      - name: "04 Test"
+        run: python -m pytest tests/ -v --tb=short --junitxml=report.xml
+
+      - name: "05 Validate config"
+        run: python scripts/validate_config.py
+
+      - name: "06 Data pipeline"
+        run: dvc repro
+
+      - name: "07 Train"
+        run: python src/training/train.py
+
+      - name: "08 Model quality gate"
+        run: python scripts/validate_model.py
+
+      - name: "09 Docker build"
+        run: |
+          $sha = $env:GITHUB_SHA.Substring(0, 7)
+          docker build -t "house-price-api:$sha" -t house-price-api:latest .
+
+      - name: "10 Smoke test"
+        run: docker run --rm house-price-api:latest python -c "import app.main"
+
+      - name: "11 Deploy"
         run: |
           $sha = $env:GITHUB_SHA.Substring(0, 7)
           $env:MODEL_VERSION = $sha
           docker compose up -d --build --force-recreate
+
+      - name: "12 Health check"
+        run: |
           Start-Sleep -Seconds 8
           curl.exe -sf http://127.0.0.1:8000/health
           curl.exe -sf http://127.0.0.1:8000/model-info

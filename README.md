@@ -44,24 +44,56 @@ Repo lớp (`upstream`) để **lấy đề**. Fork của bạn (`origin`) để
 
 | Khái niệm | Giải thích | Trong lab này |
 |---|---|---|
-| **CI** Continuous Integration | Mỗi lần push, tự chạy lint + test + validate | Jobs `lint`, `test`, `validate` |
-| **CD** Continuous Delivery | Build image mới và thay container đang serve | Jobs `build`, `deploy` |
-| **CT** Continuous Training | Retrain khi data/code/params đổi, chỉ nhận model đạt ngưỡng | Job `train` + `scripts/continuous_train.py` |
+| **CI** Continuous Integration | Mỗi lần push, tự chạy lint + test + validate | Steps `03–05` trong GitHub Actions |
+| **CD** Continuous Delivery | Build image mới và thay container đang serve | Steps `09–12` Docker build → deploy → health |
+| **CT** Continuous Training | Retrain + quality gate trước khi bake image | Steps `06–08` |
 
-```
-git push origin session/06
-   │
-   ▼
-┌─────────┐   ┌─────────┐   ┌──────────┐   ┌─────────┐   ┌─────────┐   ┌──────────┐
-│  lint   │──►│  test   │──►│ validate │──►│  train  │──►│  build  │──►│  deploy  │
-│  ruff   │   │ pytest  │   │  config  │   │ CT+gate │   │ docker  │   │ compose  │
-└─────────┘   └─────────┘   └──────────┘   └─────────┘   └─────────┘   └──────────┘
-                                 │              │                          │
-                                 FAIL dừng      FAIL không deploy          ▼
-                                                                  localhost:8000
-```
+GitHub Actions giống Jenkins: **một pipeline**, nhiều **step** nối tiếp. Step FAIL → các step sau không chạy.
 
-Job `train` chạy mỗi push (và khi bấm **Run workflow**). FAIL quality gate → không `build`/`deploy`.
+`dvc.yaml` chỉ chứa data pipeline (ingest → validate → preprocess → split). Lint/test/train/deploy **không** nhét vào DVC.
+
+### Tóm tắt 12 step
+
+| # | Step | Nhóm | Làm gì |
+|---|---|---|---|
+| 01 | Checkout | chuẩn bị | Lấy code commit vừa push |
+| 02 | Setup | chuẩn bị | `pip install`, copy CSV raw nếu thiếu |
+| 03 | Lint | CI | `ruff` — code có lỗi cú pháp/import thừa không |
+| 04 | Test | CI | `pytest` — unit test |
+| 05 | Validate config | CI | `params.yaml` / `thresholds.yaml` hợp lệ |
+| 06 | Data pipeline | CT | `dvc repro` — ingest → validate → preprocess → split |
+| 07 | Train | CT | `train.py` — ghi `models/model.pkl` |
+| 08 | Model quality gate | CT | R² / RMSE / MAE đạt ngưỡng? FAIL thì dừng, không deploy |
+| 09 | Docker build | CD | Build image `house-price-api:<sha>` |
+| 10 | Smoke test | CD | Container import được `app.main` |
+| 11 | Deploy | CD | `docker compose up` thay API đang chạy |
+| 12 | Health check | CD | `curl` `/health` và `/model-info` |
+
+### Xem process chạy ở đâu
+
+**Chỗ chính — GitHub Actions (giống màn hình job Jenkins):**
+
+1. Mở **fork của bạn** trên github.com (không phải repo lớp)
+2. Tab **Actions** (menu ngang, cạnh Code / Pull requests)
+3. Trái: workflow **ci-cd-ct**. Giữa: danh sách lần chạy (mỗi `git push` một dòng)
+4. Bấm một lần chạy → job **CI / CD / CT**
+5. Bấm job đó → **12 step** xếp dọc. Vàng = đang chạy, xanh = xong, đỏ = fail. Bấm từng step để xem log
+
+URL dạng: `https://github.com/<tenban>/mlops_starter/actions`
+
+Chạy tay không cần push: Actions → **ci-cd-ct** → **Run workflow**.
+
+**Chỗ phụ — trên máy bạn (vì runner local):**
+
+| Chỗ | Xem gì |
+|---|---|
+| Cửa sổ runner / Windows Service `actions.runner.*` | Log khi GitHub gọi máy bạn |
+| `docker ps` | Container `house-price-api` đã recreate chưa |
+| [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs) | API sau step 12 |
+| [http://127.0.0.1:8000/model-info](http://127.0.0.1:8000/model-info) | `model_version` = 7 ký tự SHA commit |
+
+Local chạy thử step 03–08 trước khi push: `ruff`, `pytest`, `validate_config.py`, `dvc repro`, `train.py`, `validate_model.py`.
+
 
 ### Vì sao Runner chạy trên máy bạn?
 
@@ -94,7 +126,8 @@ mlops_starter/
 ├── Dockerfile
 ├── docker-compose.yml
 ├── .dockerignore
-├── .github/workflows/ci.yml   # Pipeline CI / CD / CT (GitHub Actions)
+├── .github/workflows/ci.yml   # 12 step kiểu Jenkins (CI + CT + CD)
+├── dvc.yaml                   # ingest → validate → preprocess → split
 ├── configs/
 │   ├── params.yaml
 │   └── thresholds.yaml
@@ -284,7 +317,7 @@ git commit -m "lab: trigger ci pipeline"
 git push origin session/06
 ```
 
-GitHub fork → tab **Actions**. Cả chuỗi lint → test → validate → train → build → deploy chạy trên laptop.
+GitHub fork → tab **Actions** → bấm lần chạy mới nhất → job **CI / CD / CT** → 12 step (vàng / xanh / đỏ). Chi tiết: mục **Xem process chạy ở đâu** phía trên.
 
 ```powershell
 curl.exe http://127.0.0.1:8000/model-info
@@ -303,7 +336,7 @@ git commit -m "train: n_estimators 150"
 git push origin session/06
 ```
 
-Job `train` chạy `dvc repro` + `train.py` + `validate_model.py`. PASS → image mới → compose recreate.
+Step `07 Train` + `08 Model quality gate` chạy lại. PASS → image mới → compose recreate.
 
 ```powershell
 curl.exe http://127.0.0.1:8000/model-info
@@ -316,7 +349,7 @@ Hoặc GitHub → Actions → **Run workflow** (luôn CT).
 
 Đặt `min_r2: 0.99` trong `configs/thresholds.yaml`, commit, `git push origin session/06`.
 
-Job `train` FAIL. `build` / `deploy` không chạy. Container cũ vẫn serve.
+Job `08 Model quality gate` FAIL (`R2 >= 0.99`). Step 09–12 không chạy. Container cũ vẫn serve — đúng hành vi production: **model kém không lên**.
 
 Trả `min_r2: 0.60`, push lại.
 
@@ -328,16 +361,24 @@ python scripts/continuous_train.py
 
 ## Chi tiết `.github/workflows/ci.yml`
 
-Mọi job `runs-on: [self-hosted, local]` — chỉ runner laptop trên **fork của bạn**.
+Một job `pipeline`, 12 step tuần tự — giống Jenkins stage/step. `runs-on: [self-hosted, local]`.
 
-| Job | Khi nào | Việc làm |
+| # | Step | Lệnh |
 |---|---|---|
-| `lint` | mọi push | `ruff check` |
-| `test` | mọi push | `pytest` |
-| `validate` | mọi push | `validate_config.py` |
-| `train` | sau 3 job trên | `continuous_train.py` + artifact `models/*.pkl` |
-| `build` | sau `train` (train FAIL thì dừng) | nhận artifact, `docker build` + smoke import |
-| `deploy` | sau `build` | `docker compose up -d --build` + curl |
+| 01 | Checkout | `actions/checkout` |
+| 02 | Setup | `pip install` + `ensure_raw.py` |
+| 03 | Lint | `ruff check` |
+| 04 | Test | `pytest` |
+| 05 | Validate config | `python scripts/validate_config.py` |
+| 06 | Data pipeline | `dvc repro` (chỉ ingest → split) |
+| 07 | Train | `python src/training/train.py` |
+| 08 | Model quality gate | `python scripts/validate_model.py` |
+| 09 | Docker build | `docker build -t house-price-api:$SHA` |
+| 10 | Smoke test | `import app.main` trong container |
+| 11 | Deploy | `docker compose up -d --build` |
+| 12 | Health check | `curl /health` và `/model-info` |
+
+Jenkins `stage { steps { } }` ≈ GitHub `jobs.*.steps`. Step đỏ → pipeline dừng.
 
 `MODEL_VERSION` = 7 ký tự `GITHUB_SHA`.
 
@@ -346,7 +387,7 @@ Mọi job `runs-on: [self-hosted, local]` — chỉ runner laptop trên **fork c
 ## Chi tiết Continuous Training
 
 1. Có `data/raw/kc_house_data.csv`
-2. `dvc repro`
+2. `dvc repro` — ingest → validate → preprocess → split
 3. `python src/training/train.py`
 4. `python scripts/validate_model.py` vs `configs/thresholds.yaml`
 
