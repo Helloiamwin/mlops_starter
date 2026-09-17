@@ -39,7 +39,9 @@ jobs:
         run: python scripts/validate_config.py
 
       - name: "06 Data pipeline"
-        run: dvc repro
+        run: |
+          dvc init --force --no-scm
+          dvc repro
 
       - name: "07 Train"
         run: python src/training/train.py
