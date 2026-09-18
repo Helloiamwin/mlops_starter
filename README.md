@@ -4,7 +4,7 @@
 > File raw: `data/raw/kc_house_data.csv`. Mapping cột trong `src/ingestion/ingest.py`.
 > Buổi này tiếp nối **Buổi 05** (FastAPI + Docker). Cần đã train xong `models/*.pkl`.
 
-## Mục tiêu buổi học
+## Mục tiêu buổi họcaaaaa
 
 - Cấu hình Git lần đầu, **fork repo GitHub** của riêng bạn (cùng tài khoản GitHub, không cần GitLab)
 - Build image Docker và chạy API trong container (ôn buổi 05)
