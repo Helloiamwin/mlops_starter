@@ -60,11 +60,12 @@ jobs:
           python scripts/ensure_raw.py
       - name: Data pipeline
         run: |
-          # The self-hosted runner is persistent. Remove DVC's local state so
-          # run-cache entries from another checkout/absolute path are not reused.
+          # This runner is persistent. Destroy any DVC metadata/run cache left
+          # by an earlier checkout, whose cache can contain absolute old paths.
+          dvc destroy --force
           Remove-Item -Recurse -Force .dvc -ErrorAction SilentlyContinue
-          dvc init --no-scm
-          dvc repro --no-run-cache
+          dvc init --force --no-scm
+          dvc repro --force --no-run-cache
       - name: Pull model
         run: python scripts/pull_model.py --alias champion
       - name: Model quality gate
