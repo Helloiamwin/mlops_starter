@@ -4,9 +4,17 @@ import yaml
 import pickle
 import os
 import json
+import sys
 from urllib.request import urlopen
 from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 
 try:
     import mlflow
@@ -14,6 +22,8 @@ try:
     HAS_MLFLOW = True
 except ImportError:
     HAS_MLFLOW = False
+
+SKOPS_TRUSTED = ["sklearn.tree._tree.Tree"]
 
 
 def load_config(path="configs/params.yaml"):
@@ -98,11 +108,15 @@ def train(config=None):
 
     if use_mlflow:
         try:
-            with mlflow.start_run():
+            with mlflow.start_run() as run:
                 mlflow.log_params(model_params)
                 mlflow.log_metrics(metrics)
-                if tracking_uri and tracking_uri.startswith("http"):
-                    mlflow.sklearn.log_model(model, "model")
+                mlflow.sklearn.log_model(
+                    model,
+                    name="model",
+                    skops_trusted_types=SKOPS_TRUSTED,
+                )
+                print(f"[Training] Logged model to run {run.info.run_id}")
         except Exception as e:
             print(f"[Training] MLflow logging failed: {e}")
 
