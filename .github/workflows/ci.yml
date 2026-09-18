@@ -75,8 +75,13 @@ jobs:
           python scripts/ensure_raw.py
       - name: Data pipeline
         run: |
-          dvc init --force --no-scm
-          dvc repro
+          # Run the stages directly in CI. This checkout has no committed
+          # dvc.lock, and DVC's persistent self-hosted run cache can contain
+          # invalid absolute paths from a previous workspace.
+          python src/ingestion/ingest.py
+          python src/validation/validate.py
+          python src/preprocessing/preprocess.py
+          python src/split/split.py
       - name: Pull model
         run: python scripts/pull_model.py --alias champion
       - name: Model quality gate
