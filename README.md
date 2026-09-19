@@ -227,6 +227,7 @@ Phải có `model.pkl`, `scaler.pkl`, `label_encoder.pkl`. Nếu thiếu:
 dvc repro
 python src/training/train.py
 ```
+mm
 
 Copy CSV sang chỗ runner luôn tìm được (file raw không nằm trong Git):
 
