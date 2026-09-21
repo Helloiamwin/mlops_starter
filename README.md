@@ -71,12 +71,15 @@ cd mlops_starter
 git checkout session/08
 ```
 
-Để push và chạy CI trên tài khoản của mình: mở [https://github.com/nhavanntd31/mlops_starter](https://github.com/nhavanntd31/mlops_starter) → **Fork** (bỏ tick "Copy the master branch only"), rồi trỏ `origin` sang fork:
+Để push và chạy CI trên tài khoản của mình: mở [https://github.com/nhavanntd31/mlops_starter](https://github.com/nhavanntd31/mlops_starter) → **Fork** (bỏ tick "Copy the master branch only"). Fork có cùng tên repo, chỉ đổi phần tài khoản. Ví dụ tài khoản `chi-anhle-ai`:
 
 ```powershell
 git remote rename origin upstream
-git remote add origin https://github.com/<ten-github-cua-ban>/mlops_starter.git
+git remote add origin https://github.com/chi-anhle-ai/mlops_starter.git
+git remote -v
 ```
+
+Thay `chi-anhle-ai` bằng tên GitHub của bạn. Sau đó `origin` = fork (push lên đây), `upstream` = repo lớp `nhavanntd31/mlops_starter`.
 
 ### 2. Môi trường
 
