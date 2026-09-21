@@ -1,0 +1,97 @@
+name: ci
+
+on:
+  push:
+    branches:
+      - session/08
+      - master
+      - main
+  pull_request:
+  workflow_dispatch:
+
+env:
+  PYTHONUTF8: "1"
+  MLFLOW_DISABLE_AGENT_HINT: "1"
+  MLFLOW_HTTP_REQUEST_MAX_RETRIES: "0"
+
+jobs:
+  lint:
+    name: 01 lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install ruff
+      - run: ruff check app src tests scripts monitoring --select E,F --ignore E501,E402
+
+  test:
+    name: 02 test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt pytest
+      - run: python -m pytest tests/ -v --tb=short
+
+  validate-config:
+    name: 03 validate config
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pyyaml
+      - run: python scripts/validate_config.py
+
+  train:
+    name: 04 train + quality gate
+    needs: [lint, test, validate-config]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Data pipeline (DVC)
+        run: |
+          dvc init --no-scm --force
+          dvc repro
+      - name: Train
+        run: python src/training/train.py
+      - name: Model quality gate
+        run: python scripts/validate_model.py
+      - name: Drift report
+        run: python monitoring/generate_drift_report.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: model-artifacts
+          path: |
+            models/*.pkl
+            reports/*.json
+
+  docker-build:
+    name: 05 docker build (optional)
+    needs: [train]
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: model-artifacts
+      - name: Build image
+        run: docker build -t house-price-api:${GITHUB_SHA::7} .
+      - name: Smoke test
+        run: |
+          docker run -d --rm -p 8000:8000 --name api house-price-api:${GITHUB_SHA::7}
+          sleep 8
+          curl -sf http://localhost:8000/health
+          docker stop api

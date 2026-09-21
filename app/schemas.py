@@ -1,6 +1,4 @@
 from pydantic import BaseModel, Field
-from typing import Optional
-from datetime import datetime
 
 class PredictRequest(BaseModel):
     area: float = Field(..., gt=0, description="Living area in sqft")

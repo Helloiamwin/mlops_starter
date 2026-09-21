@@ -1,0 +1,8 @@
+# Chuan hoa line ending: luu LF trong repo, checkout LF tren moi OS
+* text=auto eol=lf
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.png binary
+*.pkl binary
+*.gz binary

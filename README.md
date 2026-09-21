@@ -1,15 +1,17 @@
-# Buổi 08 — Tích hợp End-to-End với Docker Compose
+# Buổi 08 — Chạy End-to-End: Data → Train → Gate → Serve → CI (Docker Compose optional)
 
-> **Dataset:** [House Sales in King County, USA](https://www.kaggle.com/datasets/harlfoxem/housesalesprediction) (`data/raw/kc_house_data.csv`), raw `data/raw/kc_house_data.csv` (~21510 rows; `sqft_living→area`, `yr_built→age`, `zipcode→location`, `floors`).
-> Chuẩn bị lại: `# column mapping in src/ingestion/ingest.py`
-
+> **Dataset:** [House Sales in King County, USA](https://www.kaggle.com/datasets/harlfoxem/housesalesprediction) — file raw duy nhất `data/raw/kc_house_data.csv` (~21613 rows).
+> Mapping cột trong `src/ingestion/ingest.py` (`sqft_living→area`, `yr_built→age`, `zipcode→location`, `floors`).
+> Lệnh trong buổi này viết cho **Windows PowerShell**, chạy từ **thư mục gốc repo**.
 
 ## Mục tiêu buổi học
 
-- Tích hợp tất cả thành phần vào một stack duy nhất bằng Docker Compose
-- Khởi động toàn bộ hệ thống bằng một lệnh
-- Chạy full flow: train → register → predict → monitor
-- Hiểu Ansible (optional) cho Infrastructure as Code
+- Fork repo về tài khoản GitHub của mình, checkout `session/08`, ôn nhanh các branch buổi trước
+- Chạy **toàn bộ flow bằng lệnh**: ingest → validate → preprocess → split → train → quality gate → register → drift → serve API
+- Giả lập dữ liệu năm mới có trend khác → phát hiện **data drift** (PSI) và **performance degradation** → **retrain** → gate → register
+- Commit + push để **GitHub Actions** chạy CI (lint → test → validate config → train + quality gate)
+- (Optional, cuối buổi) Khởi động toàn bộ stack bằng Docker Compose: Postgres + MinIO + MLflow + API + Prometheus + Loki + Grafana
+- (Optional) Làm quen Ansible cho Infrastructure as Code
 
 ---
 
@@ -18,7 +20,7 @@
 ### Docker Compose
 
 - Công cụ **orchestrate** ứng dụng đa container
-- Định nghĩa tất cả services trong một file `docker-compose.yml`
+- Định nghĩa tất cả services trong một file `docke-compose.yml`
 - Quản lý networks, volumes, dependencies giữa các services
 - Khởi động/dừng toàn bộ stack bằng một lệnh duy nhất
 
@@ -59,166 +61,201 @@ MinIO ───────┘                                     │
 
 ---
 
-## Cấu trúc file mới thêm
+## Hướng dẫn thực hành (Windows PowerShell, chạy từ thư mục gốc repo)
 
-```
-session-08-docker-compose/
-├── infra/
-│   └── docker-compose.yml        # Định nghĩa toàn bộ stack
-├── .env.example                   # Biến môi trường mẫu
-└── scripts/
-    ├── run_e2e_demo.ps1           # Script chạy demo end-to-end (PowerShell)
-    └── register_best_model.py     # Đăng ký model tốt nhất vào MLflow Registry
-```
-
----
-
-## Hướng dẫn thực hành
-
-### Bước 1: Checkout branch
-
-```bash
-git checkout session-08-docker-compose
-```
-
-### Bước 2: Chuẩn bị file `.env`
+### 1. Clone repo
 
 ```powershell
-Copy-Item .env.example .env
+git clone https://github.com/nhavanntd31/mlops_starter.git
+cd mlops_starter
+git checkout session/08
 ```
 
-Mở `.env` và điều chỉnh nếu cần:
-```env
-POSTGRES_USER=mlflow
-POSTGRES_PASSWORD=mlflow123
-POSTGRES_DB=mlflow_db
-MINIO_ROOT_USER=minioadmin
-MINIO_ROOT_PASSWORD=minioadmin
-MLFLOW_TRACKING_URI=http://mlflow:5000
-MLFLOW_S3_ENDPOINT_URL=http://minio:9000
-AWS_ACCESS_KEY_ID=minioadmin
-AWS_SECRET_ACCESS_KEY=minioadmin
-```
-
-### Bước 3: Đọc `docker-compose.yml`
-
-Hiểu từng service và cách chúng kết nối:
-
-| Service | Image | Port | Mô tả | Health check |
-|---------|-------|------|--------|-------------|
-| `postgres` | `postgres:15` | `5432` | Backend store MLflow | `pg_isready` |
-| `minio` | `minio/minio` | `9000`, `9001` | Artifact storage (API + Console) | `curl /minio/health/live` |
-| `mlflow` | `ghcr.io/mlflow/mlflow` | `5000` | Tracking server | `curl /health` |
-| `model-api` | build từ `Dockerfile` | `8000` | FastAPI prediction API | `curl /health` |
-| `prometheus` | `prom/prometheus` | `9090` | Metrics collection | `curl /-/healthy` |
-| `loki` | `grafana/loki` | `3100` | Log aggregation | `curl /ready` |
-| `promtail` | `grafana/promtail` | — | Đẩy logs vào Loki | — |
-| `grafana` | `grafana/grafana` | `3000` | Dashboards | `curl /api/health` |
-
-### Bước 4: Khởi động stack
+Để push và chạy CI trên tài khoản của mình: mở [https://github.com/nhavanntd31/mlops_starter](https://github.com/nhavanntd31/mlops_starter) → **Fork** (bỏ tick "Copy the master branch only"), rồi trỏ `origin` sang fork:
 
 ```powershell
-cd infra
-docker compose up -d --build
+git remote rename origin upstream
+git remote add origin https://github.com/<ten-github-cua-ban>/mlops_starter.git
 ```
 
-Theo dõi logs:
+### 2. Môi trường
+
 ```powershell
-docker compose logs -f
+python -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt pytest ruff
 ```
 
-### Bước 5: Kiểm tra services
+Nếu báo `running scripts is disabled`: `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
+
+### 3. Bật MLflow (terminal riêng, giữ chạy)
 
 ```powershell
-docker compose ps
+mlflow ui --port 5000
 ```
 
-Kiểm tra từng endpoint:
-```powershell
-curl http://localhost:8000/health
-curl http://localhost:5000/health
-curl http://localhost:9090/-/healthy
-curl http://localhost:3100/ready
-```
-
-### Bước 6: Chạy data pipeline + train
+### 4. Chạy toàn bộ pipeline
 
 ```powershell
-python src/data/make_dataset.py
-python src/features/build_features.py
-python src/models/train_model.py
-```
-
-### Bước 7: Register model
-
-```powershell
+dvc init
+dvc repro
+python src/training/train.py
+python scripts/validate_model.py
 python scripts/register_best_model.py
+python monitoring/generate_drift_report.py
 ```
 
-Script sẽ:
-- Tìm run có R² cao nhất trong MLflow
-- Đăng ký model vào MLflow Model Registry
-- Chuyển model sang stage "Production"
-
-### Bước 8: Test API
-
-```powershell
-python scripts/sample_predict.py http://localhost:8000
-```
-
-Hoặc dùng curl:
-```powershell
-curl -X POST http://localhost:8000/predict -H "Content-Type: application/json" -d "{\"features\": {\"area\": 120.5, \"bedrooms\": 3}}"
-```
-
-### Bước 9: Mở Grafana
-
-1. Truy cập: **http://localhost:3000**
-2. Đăng nhập: `admin` / `admin`
-3. Thêm data source **Prometheus**: URL = `http://prometheus:9090`
-4. Thêm data source **Loki**: URL = `http://loki:3100`
-5. Tạo dashboard mới hoặc import từ template
-
-### Bước 10: Chạy E2E demo tự động
+Hoặc một lệnh chạy hết (kèm pytest):
 
 ```powershell
 .\scripts\run_e2e_demo.ps1
 ```
 
-Script thực hiện toàn bộ flow tự động:
-1. Khởi động stack
-2. Chờ services healthy
-3. Chạy data pipeline
-4. Train model
-5. Register model
-6. Gửi prediction requests
-7. Kiểm tra metrics endpoint
-8. In kết quả tổng hợp
+Kết quả: `test_r2 ≈ 0.78`, `Result: ALL CHECKS PASSED`, `models/model.pkl`, `reports/evaluation.json`, run mới trên http://localhost:5000.
 
-### Bước 11 (optional): Ansible IaC
+### 4b. Kịch bản data drift → retrain
 
-Ansible là phần **optional**. Nếu còn thời gian:
+Giả lập dữ liệu **năm 2016**: giá tăng ~30%, nhà rộng hơn ~20%, xây mới hơn.
 
-1. Cài: `pip install ansible`
-2. Tạo file `infra/ansible/ping.yml`:
-
-```yaml
-- hosts: localhost
-  connection: local
-  tasks:
-    - name: Check docker is available
-      command: docker version
-      register: docker_out
-      changed_when: false
-
-    - name: Show docker client version
-      debug:
-        msg: "{{ docker_out.stdout_lines | first }}"
+```powershell
+python scripts/simulate_new_data.py
+python monitoring/generate_drift_report.py --current data/interim/kc_house_data_2016.csv
+python scripts/evaluate_model.py
 ```
 
-3. Chạy: `ansible-playbook infra/ansible/ping.yml`
+Mong đợi: `price PSI≈0.26 (significant_drift) -> RETRAIN RECOMMENDED` (exit 2) và model cũ `[FAIL] |bias| <= 50000 -> bias≈-66,000` (exit 1): model dự đoán thấp hơn giá thật vì học trên thị trường cũ.
 
-Mục tiêu: hiểu playbook mô tả trạng thái mong muốn; deploy Compose lên remote server để buổi sau/advanced.
+Retrain trên dữ liệu gộp 2014–2016 rồi đánh giá lại:
+
+```powershell
+$env:KC_RAW_PATH = "data/interim/kc_house_data_2014_2016.csv"
+python src/preprocessing/preprocess.py
+python src/split/split.py
+python src/training/train.py
+python scripts/validate_model.py
+python scripts/evaluate_model.py
+python scripts/register_best_model.py
+Remove-Item Env:KC_RAW_PATH
+```
+
+Mong đợi: gate PASS, trên dữ liệu 2016 `R2≈0.82`, `bias≈-26,000` → PASS. Đây là vòng **monitor → trigger → retrain → validate → register** của `docs/retraining-trigger.md`.
+
+### 5. Serve API (terminal riêng) và gọi thử
+
+```powershell
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+```powershell
+python scripts/sample_predict.py
+curl.exe http://localhost:8000/metrics
+```
+
+> Trong PowerShell phải gõ `curl.exe`, vì `curl` là alias của `Invoke-WebRequest`.
+> Cổng 8000 bị chiếm: `netstat -ano | findstr :8000` → `taskkill /PID <pid> /F`.
+
+### 6. Commit → CI
+
+```powershell
+git add -A
+git commit -m "lab: session 08 e2e"
+git push -u origin session/08
+```
+
+Fork → tab **Actions** → enable workflows → workflow **ci** chạy 4 job: lint → test → validate config → train + quality gate.
+
+Thử gate chặn: sửa `configs/thresholds.yaml` thành `min_r2: 0.99`, commit, push → job 04 đỏ. Trả về `0.60`, push lại.
+
+### 7. (Optional) Docker Compose
+
+Tắt `mlflow ui` và `uvicorn` trước để nhả cổng 5000/8000. Cần Docker Desktop đang chạy.
+
+```powershell
+docker compose -f infra/docker-compose.yml up -d --build
+docker compose -f infra/docker-compose.yml ps
+python scripts/sample_predict.py
+```
+
+| Dịch vụ | URL |
+|---|---|
+| MLflow | http://localhost:5000 |
+| API docs | http://localhost:8000/docs |
+| Prometheus | http://localhost:9090 (Status → Targets: `model-api` UP) |
+| Grafana | http://localhost:3000 (`admin` / `admin123`) |
+| MinIO | http://localhost:9001 (`minioadmin` / `minioadmin123`) |
+
+Chạy lại `python src/training/train.py` → run vào Postgres, artifact vào MinIO.
+
+Dừng: `docker compose -f infra/docker-compose.yml down -v`.
+
+### 8. (Optional) Ansible
+
+```bash
+pip install ansible
+ansible-playbook infra/ansible/ping.yml
+```
+
+(Ansible chạy trong WSL/Ubuntu, không hỗ trợ control node Windows.)
+
+---
+
+## Lệnh tương đương trên Ubuntu / WSL
+
+```bash
+git clone https://github.com/nhavanntd31/mlops_starter.git && cd mlops_starter
+git checkout session/08
+
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt pytest ruff
+
+mlflow ui --port 5000 &          # hoặc mở terminal riêng
+
+dvc init
+dvc repro
+python src/training/train.py
+python scripts/validate_model.py
+python scripts/register_best_model.py
+python monitoring/generate_drift_report.py
+pytest tests/ -q
+
+# Drift -> retrain
+python scripts/simulate_new_data.py
+python monitoring/generate_drift_report.py --current data/interim/kc_house_data_2016.csv
+python scripts/evaluate_model.py
+KC_RAW_PATH=data/interim/kc_house_data_2014_2016.csv bash -c '
+  python src/preprocessing/preprocess.py && python src/split/split.py &&
+  python src/training/train.py && python scripts/validate_model.py'
+python scripts/evaluate_model.py
+
+uvicorn app.main:app --host 0.0.0.0 --port 8000 &
+python scripts/sample_predict.py
+curl http://localhost:8000/metrics
+
+git add -A && git commit -m "lab: session 08 e2e" && git push -u origin session/08
+
+# Optional Docker
+docker compose -f infra/docker-compose.yml up -d --build
+docker compose -f infra/docker-compose.yml ps
+docker compose -f infra/docker-compose.yml down -v
+```
+
+Cổng bị chiếm trên Ubuntu: `sudo lsof -i :8000` → `kill <pid>` hoặc `docker stop <container>`.
+
+---
+
+## Xử lý lỗi thường gặp
+
+| Lỗi | Cách sửa |
+|---|---|
+| `curl: -X` không hiểu (Windows) | Dùng `curl.exe` |
+| `running scripts is disabled` | `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` |
+| `dvc: command not found` | Activate venv, hoặc `python -m dvc repro` |
+| `MLflow logging failed` | Chưa bật `mlflow ui`; model vẫn lưu, pipeline vẫn chạy |
+| `model_loaded: false` | Chưa có `models/*.pkl`; chạy bước 4 rồi restart uvicorn / build lại image |
+| `Can't get attribute ... sklearn` trong container | Bản scikit-learn khác bản đã train; `pip install -r requirements.txt` (đã pin) rồi train + build lại |
+| Cổng 5000/8000 bận | `netstat -ano \| findstr :8000` → `taskkill /PID <pid> /F` |
+| `LF will be replaced by CRLF` | Cảnh báo vô hại, `.gitattributes` đã ép LF |
 
 ---
 
@@ -227,8 +264,8 @@ Mục tiêu: hiểu playbook mô tả trạng thái mong muốn; deploy Compose 
 | Service | Image | Port(s) | Mô tả | URL kiểm tra |
 |---------|-------|---------|--------|--------------|
 | PostgreSQL | `postgres:15` | `5432` | MLflow backend store | — |
-| MinIO | `minio/minio` | `9000` (API), `9001` (Console) | S3-compatible storage | `http://localhost:9001` |
-| MLflow | `ghcr.io/mlflow/mlflow` | `5000` | Experiment tracking | `http://localhost:5000` |
+| MinIO | `quay.io/minio/minio` | `9000` (API), `9001` (Console) | S3-compatible storage | `http://localhost:9001` |
+| MLflow | build từ `infra/Dockerfile.mlflow` | `5000` | Experiment tracking | `http://localhost:5000` |
 | Model API | build local | `8000` | Prediction serving | `http://localhost:8000/docs` |
 | Prometheus | `prom/prometheus` | `9090` | Metrics DB | `http://localhost:9090` |
 | Loki | `grafana/loki` | `3100` | Log aggregation | — |
@@ -263,7 +300,7 @@ Lưu trữ metadata của MLflow: experiments, runs, params, metrics.
 
 ```yaml
 minio:
-  image: minio/minio
+  image: quay.io/minio/minio
   command: server /data --console-address ":9001"
   environment:
     MINIO_ROOT_USER: ${MINIO_ROOT_USER}
@@ -286,13 +323,15 @@ S3-compatible storage cho MLflow artifacts (model files, plots, ...).
 
 ```yaml
 mlflow:
-  image: ghcr.io/mlflow/mlflow
+  build:
+    context: .
+    dockerfile: Dockerfile.mlflow     # ghcr.io/mlflow/mlflow + psycopg2-binary + boto3
   command: >
     mlflow server
     --backend-store-uri postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-    --default-artifact-root s3://mlflow-artifacts/
-    --host 0.0.0.0
-    --port 5000
+    --artifacts-destination s3://mlflow-artifacts/
+    --serve-artifacts
+    --host 0.0.0.0 --port 5000
   environment:
     MLFLOW_S3_ENDPOINT_URL: http://minio:9000
     AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
@@ -302,9 +341,11 @@ mlflow:
   depends_on:
     postgres:
       condition: service_healthy
-    minio:
-      condition: service_healthy
+    minio-init:
+      condition: service_completed_successfully
 ```
+
+Image MLflow chính thức **không kèm** driver Postgres/S3 nên phải build thêm 1 layer. `--serve-artifacts` cho server **proxy** artifact lên MinIO, nên máy học viên không cần cài `boto3` hay khai báo AWS key. Service `minio-init` (image `quay.io/minio/mc`) tạo bucket `mlflow-artifacts` rồi thoát.
 
 Kết nối PostgreSQL (backend) + MinIO (artifacts). Chỉ khởi động sau khi cả hai healthy.
 

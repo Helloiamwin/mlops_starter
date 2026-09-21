@@ -1,7 +1,7 @@
 import time
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import Response, PlainTextResponse
+from starlette.responses import PlainTextResponse
 
 REQUEST_COUNT = {}
 REQUEST_LATENCY = {}
@@ -57,7 +57,6 @@ def metrics_endpoint(request: Request):
         parts = key.split("_", 1)
         method = parts[0]
         path = parts[1] if len(parts) > 1 else "/"
-        avg = sum(durations) / len(durations)
         lines.append(f'http_request_duration_seconds_sum{{method="{method}",path="{path}"}} {sum(durations):.6f}')
         lines.append(f'http_request_duration_seconds_count{{method="{method}",path="{path}"}} {len(durations)}')
 

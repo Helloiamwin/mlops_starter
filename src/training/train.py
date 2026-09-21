@@ -73,7 +73,8 @@ def train(config=None):
             with mlflow.start_run():
                 mlflow.log_params(model_params)
                 mlflow.log_metrics(metrics)
-                mlflow.sklearn.log_model(model, "model")
+                # MLflow 3.x mac dinh serialize bang skops va chan sklearn Tree -> dung cloudpickle
+                mlflow.sklearn.log_model(model, name="model", serialization_format="cloudpickle")
         except Exception as e:
             print(f"[Training] MLflow logging failed: {e}")
 

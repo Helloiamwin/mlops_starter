@@ -1,3 +1,5 @@
+import os
+
 import pandas as pd
 import yaml
 
@@ -45,7 +47,8 @@ def map_king_county(df: pd.DataFrame) -> pd.DataFrame:
 def ingest(config=None):
     if config is None:
         config = load_config()
-    raw_path = config["data"]["raw_path"]
+    # Cho phep doi nguon du lieu khi retrain: $env:KC_RAW_PATH = "data/interim/kc_house_data_2014_2016.csv"
+    raw_path = os.environ.get("KC_RAW_PATH") or config["data"]["raw_path"]
     print(f"[Ingestion] Reading data from {raw_path}")
     raw = pd.read_csv(raw_path)
     df = map_king_county(raw)

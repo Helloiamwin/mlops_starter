@@ -3,6 +3,7 @@ model_validation:
   max_rmse: 250000
   max_mae: 150000
   min_samples: 100
+  max_bias: 50000        # |mean(pred - actual)| tren du lieu moi, dung cho scripts/evaluate_model.py
 
 performance:
   max_latency_ms: 200
