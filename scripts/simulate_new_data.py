@@ -23,7 +23,8 @@ def simulate(raw_path, out_dir, price_up=0.30, area_up=0.20, seed=42):
     new["yr_built"] = np.minimum(new["yr_built"] + rng.integers(0, 15, len(new)), 2015)
     more_floors = rng.random(len(new)) < 0.25
     new.loc[more_floors & (new["floors"] < 2), "floors"] = 2.0
-    new["date"] = "20160" + rng.integers(1, 10, len(new)).astype(str) + "15T000000"
+    months = pd.Series(rng.integers(1, 10, len(new)), index=new.index).astype(str)
+    new["date"] = "20160" + months + "15T000000"
     new["id"] = new["id"].astype(str) + "16"
 
     os.makedirs(out_dir, exist_ok=True)
