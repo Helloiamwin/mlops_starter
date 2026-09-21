@@ -7,35 +7,29 @@ stages:
       hash: md5
       md5: a0f2643d767358ef7be19fff36bfcd71
       size: 656
-      isexec: true
     - path: data/raw/kc_house_data.csv
       hash: md5
-      md5: b1e7bdf4f3e61792c0979a5697dc7145
-      size: 2515206
-      isexec: true
+      md5: b162e10841eaa8ca9c63c8bf07748ffb
+      size: 2536820
     - path: src/ingestion/ingest.py
       hash: md5
       md5: df8fbba6f48466a5e72e5327e65350c8
       size: 1798
-      isexec: true
   validate:
     cmd: python src/validation/validate.py
     deps:
     - path: data/raw/kc_house_data.csv
       hash: md5
-      md5: b1e7bdf4f3e61792c0979a5697dc7145
-      size: 2515206
-      isexec: true
+      md5: b162e10841eaa8ca9c63c8bf07748ffb
+      size: 2536820
     - path: src/ingestion/ingest.py
       hash: md5
       md5: df8fbba6f48466a5e72e5327e65350c8
       size: 1798
-      isexec: true
     - path: src/validation/validate.py
       hash: md5
       md5: 54c7173045b0786d5eb5105b7e345110
       size: 2212
-      isexec: true
   preprocess:
     cmd: python src/preprocessing/preprocess.py
     deps:
@@ -43,38 +37,31 @@ stages:
       hash: md5
       md5: a0f2643d767358ef7be19fff36bfcd71
       size: 656
-      isexec: true
     - path: data/raw/kc_house_data.csv
       hash: md5
-      md5: b1e7bdf4f3e61792c0979a5697dc7145
-      size: 2515206
-      isexec: true
+      md5: b162e10841eaa8ca9c63c8bf07748ffb
+      size: 2536820
     - path: src/ingestion/ingest.py
       hash: md5
       md5: df8fbba6f48466a5e72e5327e65350c8
       size: 1798
-      isexec: true
     - path: src/preprocessing/preprocess.py
       hash: md5
       md5: f5189116d04132f82d6ddeb2911d2099
       size: 1731
-      isexec: true
     outs:
     - path: data/processed/processed.csv
       hash: md5
-      md5: a7518afe8d5faa1d741601077748175c
-      size: 2354930
-      isexec: true
+      md5: b1afbca71b713d8f16a9ce7a650d581d
+      size: 2398217
     - path: models/label_encoder.pkl
       hash: md5
-      md5: 3e9522a8ebf81eabff8664e001659c48
-      size: 802
-      isexec: true
+      md5: cdd6d7a4af5480a23246665d4d68e71f
+      size: 803
     - path: models/scaler.pkl
       hash: md5
-      md5: 330966fb56e1c49adf0ef936f84400d2
-      size: 701
-      isexec: true
+      md5: 6fbf80efafb7cd0b22572d48a124c76e
+      size: 702
   split:
     cmd: python src/split/split.py
     deps:
@@ -82,17 +69,14 @@ stages:
       hash: md5
       md5: a0f2643d767358ef7be19fff36bfcd71
       size: 656
-      isexec: true
     - path: data/processed/processed.csv
       hash: md5
-      md5: a7518afe8d5faa1d741601077748175c
-      size: 2354930
-      isexec: true
+      md5: b1afbca71b713d8f16a9ce7a650d581d
+      size: 2398217
     - path: src/split/split.py
       hash: md5
       md5: c3b02bed743df0f0bb4b8b88df5ca3ef
       size: 1140
-      isexec: true
     params:
       params.yaml:
         data.test_size: 0.2
@@ -100,16 +84,13 @@ stages:
     outs:
     - path: data/processed/test.csv
       hash: md5
-      md5: 44ef170f677d91f7090c88d39da8c2d3
-      size: 465510
-      isexec: true
+      md5: 6e7f3c574484776e8893c88c859b2748
+      size: 471364
     - path: data/processed/train.csv
       hash: md5
-      md5: e13b72b65c70f35802b03c35724ed87a
-      size: 1628656
-      isexec: true
+      md5: 8fbffb78ef98e9baf59aff8667ac0d02
+      size: 1649672
     - path: data/processed/val.csv
       hash: md5
-      md5: fabd6569259ed47d771ef1b6f56e08a1
-      size: 232735
-      isexec: true
+      md5: a82ced40dc837038eedde4eca06c12d3
+      size: 235721
